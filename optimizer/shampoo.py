@@ -1,10 +1,10 @@
 import torch
 from torch.optim.optimizer import Optimizer
 
-class shampoo(Optimizer):
+class Shampoo(Optimizer):
     def __init__(self, params, lr=1e-1, momentum=0, weight_decay=0, epsilon=1e-4, update_freq=1):
         defaults = dict(lr=lr, momentum=momentum, weight_decay=weight_decay, epsilon=epsilon, update_freq=update_freq)
-        super(shampoo, self).__init__(params, defaults)
+        super(Shampoo, self).__init__(params, defaults)
 
     
     def step(self, closure = None):

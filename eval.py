@@ -24,9 +24,7 @@ class LogisticRegression(nn.Module):
     def forward(self, x):
         return torch.matmul(x, self.weights) + self.bias
 
-# Training function
-def train_model(optimizer, train_loader, epochs=100, log_interval=10):
-    model = LogisticRegression(28*28)
+def train_model(model, optimizer, train_loader, epochs=100, log_interval=10):
     criterion = nn.BCEWithLogitsLoss()
     losses = []
     
@@ -36,7 +34,10 @@ def train_model(optimizer, train_loader, epochs=100, log_interval=10):
             optimizer.zero_grad()
             outputs = model(X_batch.view(-1, 28*28)).squeeze()
             loss = criterion(outputs, y_batch)
-            loss += 0.01*(torch.norm(model.weights)**2 + model.bias**2)  # L2 regularization
+            
+            reg_loss = 0.01*(torch.norm(model.weights)**2 + torch.norm(model.bias)**2)
+            loss += reg_loss
+            
             loss.backward()
             optimizer.step()
             epoch_loss += loss.item()
@@ -47,6 +48,7 @@ def train_model(optimizer, train_loader, epochs=100, log_interval=10):
             print(f'Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}')
     
     return losses
+
 
 # Analysis functions
 def save_analysis(losses, name):
@@ -90,7 +92,7 @@ if __name__ == '__main__':
     idx = (full_train.targets == 0) | (full_train.targets == 1)
     X = full_train.data[idx].float() / 255.0
     y = full_train.targets[idx].float()
-    y[y == 0] = -1  # Convert to -1/1 labels
+
     
     # Train-test split
     X_train, X_test, y_train, y_test = train_test_split(
@@ -99,28 +101,31 @@ if __name__ == '__main__':
     
     # Create DataLoaders
     train_dataset = TensorDataset(X_train, y_train)
-    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=10000, shuffle=True)
     
     # Train with different optimizers
     optimizers = {
+        'Shampoo': Shampoo,
         'SGD': torch.optim.SGD,
-        'SGD_Momentum': lambda params: torch.optim.SGD(params, momentum=0.9, nesterov=True),
-        'Shampoo': Shampoo
+        'SGD_Momentum': lambda params: torch.optim.SGD(params, momentum=0.9, nesterov=True, lr=0.001)
     }
     
     results = {}
     
     for opt_name, opt_class in optimizers.items():
         print(f"\nTraining with {opt_name}...")
-        model = LogisticRegression(28*28)
         
+        model = LogisticRegression(28*28)
         if opt_name == 'Shampoo':
-            optimizer = opt_class(model.parameters(), lr=0.1, momentum=0.9)
+            optimizer = opt_class(model.parameters(), lr=0.00001, momentum=0.9)
+        elif opt_name == 'SGD':
+            optimizer = opt_class(model.parameters(), lr=0.001)
         else:
-            optimizer = opt_class(model.parameters(), lr=0.1)
+            optimizer = opt_class(model.parameters())
+        
+        losses = train_model(model, optimizer, train_loader= train_loader, epochs=100)
         
         start_time = time.time()
-        losses = train_model(optimizer, train_loader, epochs=100)
         training_time = time.time() - start_time
         
         results[opt_name] = {
