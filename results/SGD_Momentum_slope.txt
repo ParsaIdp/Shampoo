@@ -1,1 +1,1 @@
-Convergence slope: -0.004385
+Convergence slope: -0.002243

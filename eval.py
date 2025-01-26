@@ -101,7 +101,7 @@ if __name__ == '__main__':
     
     # Create DataLoaders
     train_dataset = TensorDataset(X_train, y_train)
-    train_loader = DataLoader(train_dataset, batch_size=10000, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=100000, shuffle=True)
     
     # Train with different optimizers
     optimizers = {
@@ -117,7 +117,7 @@ if __name__ == '__main__':
         
         model = LogisticRegression(28*28)
         if opt_name == 'Shampoo':
-            optimizer = opt_class(model.parameters(), lr=0.00001, momentum=0.9)
+            optimizer = opt_class(model.parameters(), lr=0.01, momentum=0.9)
         elif opt_name == 'SGD':
             optimizer = opt_class(model.parameters(), lr=0.001)
         else:
