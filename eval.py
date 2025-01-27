@@ -5,50 +5,53 @@ import torch
 import torch.nn as nn
 import torchvision
 from torchvision import transforms
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
+from optimizer.shampoo import Shampoo  # Assuming Shampoo optimizer is available
+
 # Create results directory
 os.makedirs('results', exist_ok=True)
 
-from optimizer.shampoo import Shampoo
-
-
-# Logistic regression model
-class LogisticRegression(nn.Module):
-    def __init__(self, input_dim):
+# Define MLP model
+class MLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, num_classes):
         super().__init__()
-        self.weights = nn.Parameter(torch.randn(input_dim, 1))
-        self.bias = nn.Parameter(torch.randn(1))
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(hidden_dim, num_classes)
         
     def forward(self, x):
-        return torch.matmul(x, self.weights) + self.bias
+        x = x.view(x.size(0), -1)  # Flatten input
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        return x
 
+# Training function
 def train_model(model, optimizer, train_loader, epochs=100, log_interval=10):
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.CrossEntropyLoss()
     losses = []
     
     for epoch in range(epochs):
+        model.train()
         epoch_loss = 0
+        
         for X_batch, y_batch in train_loader:
             optimizer.zero_grad()
-            outputs = model(X_batch.view(-1, 28*28)).squeeze()
+            outputs = model(X_batch)
             loss = criterion(outputs, y_batch)
-            
-            reg_loss = 0.01*(torch.norm(model.weights)**2 + torch.norm(model.bias)**2)
-            loss += reg_loss
-            
             loss.backward()
             optimizer.step()
+            
             epoch_loss += loss.item()
         
         avg_loss = epoch_loss / len(train_loader)
         losses.append(avg_loss)
+        
         if epoch % log_interval == 0:
             print(f'Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}')
     
     return losses
-
 
 # Analysis functions
 def save_analysis(losses, name):
@@ -69,65 +72,46 @@ def save_analysis(losses, name):
     plt.ylabel('Loss')
     plt.savefig(f'results/{name}_log_loss.png')
     plt.close()
-    
-    # Calculate slope
-    valid_losses = [l for l in losses if not np.isinf(l)]
-    x = np.arange(len(valid_losses))
-    slope = np.polyfit(x, np.log(valid_losses), 1)[0]
-    
-    with open(f'results/{name}_slope.txt', 'w') as f:
-        f.write(f"Convergence slope: {slope:.6f}")
 
 # Main execution
 if __name__ == '__main__':
     # Load and prepare dataset
     transform = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Resize((28, 28))
+        transforms.Normalize((0.1307,), (0.3081,))
     ])
     
-    full_train = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+    train_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
+    train_loader = DataLoader(train_dataset, batch_size=1024, shuffle=True)
     
-    # Filter 0s and 1s
-    idx = (full_train.targets == 0) | (full_train.targets == 1)
-    X = full_train.data[idx].float() / 255.0
-    y = full_train.targets[idx].float()
+    # Define model parameters
+    input_dim = 28 * 28
+    hidden_dim = 128
+    num_classes = 10
+    epochs = 20
 
-    
-    # Train-test split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
-    
-    # Create DataLoaders
-    train_dataset = TensorDataset(X_train, y_train)
-    train_loader = DataLoader(train_dataset, batch_size=100000, shuffle=True)
-    
-    # Train with different optimizers
+    # Optimizers to compare
     optimizers = {
-        'Shampoo': Shampoo,
-        'SGD': torch.optim.SGD,
-        'SGD_Momentum': lambda params: torch.optim.SGD(params, momentum=0.9, nesterov=True, lr=0.001)
+        'SGD': lambda params: torch.optim.SGD(params, lr=0.01),
+        'Adam': lambda params: torch.optim.Adam(params, lr=0.001),
+        'Shampoo': lambda params: Shampoo(params, lr=0.01, momentum=0.9)
     }
     
     results = {}
     
-    for opt_name, opt_class in optimizers.items():
+    for opt_name, opt_fn in optimizers.items():
         print(f"\nTraining with {opt_name}...")
         
-        model = LogisticRegression(28*28)
-        if opt_name == 'Shampoo':
-            optimizer = opt_class(model.parameters(), lr=0.01, momentum=0.9)
-        elif opt_name == 'SGD':
-            optimizer = opt_class(model.parameters(), lr=0.001)
-        else:
-            optimizer = opt_class(model.parameters())
+        # Create model and optimizer
+        model = MLP(input_dim, hidden_dim, num_classes)
+        optimizer = opt_fn(model.parameters())
         
-        losses = train_model(model, optimizer, train_loader= train_loader, epochs=100)
-        
+        # Train model
         start_time = time.time()
+        losses = train_model(model, optimizer, train_loader, epochs=epochs)
         training_time = time.time() - start_time
         
+        # Save results
         results[opt_name] = {
             'losses': losses,
             'time': training_time
@@ -139,9 +123,9 @@ if __name__ == '__main__':
     # Generate comparison plot
     plt.figure(figsize=(10, 6))
     for name, data in results.items():
-        plt.semilogy(data['losses'], label=name)
+        plt.plot(data['losses'], label=name)
     
-    plt.title('Optimizer Comparison (Log Scale)')
+    plt.title('Optimizer Comparison')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
